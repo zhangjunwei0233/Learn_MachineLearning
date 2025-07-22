@@ -454,18 +454,51 @@ def one_hot_encode(y: np.ndarray, num_classes: int) -> np.ndarray:
     return y_onehot
 
 
-def load_data(filename: str) -> Tuple[np.ndarray, np.ndarray]:
+def shuffle_data(X: np.ndarray, y: np.ndarray, random_state: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Shuffle the data randomly to mix up ordered datasets.
+
+    Args:
+        X: Feature matrix (m x n)
+        y: Labels (m x 1) or (m,)
+        random_state: Random seed for reproducibility
+
+    Returns:
+        Tuple of shuffled (X, y)
+    """
+    if random_state is not None:
+        np.random.seed(random_state)
+
+    # Create random permutation of indices
+    m = X.shape[0]
+    indices = np.random.permutation(m)
+
+    # Shuffle both X and y using the same indices
+    X_shuffled = X[indices]
+    y_shuffled = y[indices]
+
+    return X_shuffled, y_shuffled
+
+
+def load_data(filename: str, shuffle: bool = True, random_state: Optional[int] = 42) -> Tuple[np.ndarray, np.ndarray]:
     """
     Load data from MATLAB .mat file.
 
     Args:
         filename: Path to .mat file
+        shuffle: Whether to shuffle the data to mix up ordered datasets
+        random_state: Random seed for reproducibility (only used if shuffle=True)
 
     Returns:
         Tuple of (X, y) where X is features and y is labels
     """
     data = loadmat(filename)
-    return data['X'], data['y']
+    X, y = data['X'], data['y']
+
+    if shuffle:
+        X, y = shuffle_data(X, y, random_state)
+
+    return X, y
 
 
 def display_sample_predictions(X: np.ndarray, y_true: np.ndarray, y_pred: np.ndarray, num_samples: int = 10):
@@ -517,7 +550,7 @@ def main():
 
     # Load data
     try:
-        X, y = load_data('ex4data1.mat')
+        X, y = load_data('ex4data1.mat', shuffle=True)
         print(f"Data loaded successfully!")
         print(f"Features shape: {X.shape}")
         print(f"Labels shape: {y.shape}")
@@ -531,10 +564,13 @@ def main():
     y_onehot = one_hot_encode(y, num_classes)
     print(f"One-hot encoded labels shape: {y_onehot.shape}")
 
+    # split it into training set and testing set
+    m_train = (X.shape[0] // 10) * 7
+
     # Initialize neural network
     input_size = X.shape[1]  # 400 features
     hidden_size = 25
-    learning_rate = 1.0
+    learning_rate = 0.4  # This is the optimized learning rate
 
     print(f"\nInitializing neural network:")
     print(f"Architecture: {input_size} -> {hidden_size} -> {num_classes}")
@@ -558,31 +594,32 @@ def main():
 
     # Train the network
     print("\nTraining neural network...")
-    result = nn.fit(X, y_onehot, maxiter=250)
+    result = nn.fit(X[:m_train, :], y_onehot[:m_train, :], maxiter=250)
 
-    print(f"Training completed!")
+    print("Training completed!")
     print(f"Success: {result['success']}")
     print(f"Final cost: {result['cost']:.6f}")
     print(f"Iterations: {result['iterations']}")
 
-    # Make predictions
-    print("\nEvaluating model performance...")
-    y_pred = nn.predict(X)
-    accuracy = nn.score(X, y)
+    # Test using training set
+    print("\nEvaluating model performance using training set...")
+    y_pred_train = nn.predict(X[:m_train, :])
+    accuracy_train = nn.score(X[:m_train, :], y[:m_train, :])
 
-    print(f"Training accuracy: {accuracy:.2%}")
+    print(f"Training accuracy: {accuracy_train:.2%}")
 
-    # Display sample predictions
     print("\nDisplaying sample predictions...")
-    display_sample_predictions(X, y, y_pred)
+    display_sample_predictions(X[:m_train, :], y[:m_train, :], y_pred_train)
 
-    # Show some individual predictions
-    print("\nSample predictions:")
-    for i in range(5):
-        idx = np.random.randint(0, X.shape[0])
-        pred = y_pred[idx]
-        true_label = y[idx, 0]
-        print(f"Sample {idx}: Predicted = {pred}, True = {true_label}")
+    # Test using testing set
+    print("\nEvaluating model performance using test set...")
+    y_pred_test = nn.predict(X[m_train:, :])
+    accuracy_test = nn.score(X[m_train:, :], y[m_train:, :])
+
+    print(f"Testing accuracy: {accuracy_test:.2%}")
+
+    print("\nDisplaying sample predictions...")
+    display_sample_predictions(X[m_train:, :], y[m_train:, :], y_pred_test)
 
 
 if __name__ == "__main__":
